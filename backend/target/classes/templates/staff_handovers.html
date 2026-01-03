@@ -1,0 +1,31 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <title>Handovers</title>
+  <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body class="container">
+  <h1>Teslim Ekranı (Not Delivered)</h1>
+  <a th:href="@{/}">← Home</a>
+
+  <table>
+    <thead><tr><th>ClaimId</th><th>CustodyItemId</th><th>OTP</th><th>Deliver</th></tr></thead>
+    <tbody>
+      <tr th:each="h: ${items}">
+        <td th:text="${h.claimId}"></td>
+        <td th:text="${h.custodyItemId}"></td>
+        <td><code th:text="${h.otp}"></code></td>
+        <td>
+          <form method="post" th:action="@{/staff/handovers/deliver}">
+            <input type="hidden" name="claimId" th:value="${h.claimId}" th:attr="id=${'claimId_' + h.claimId}"/>
+            <input type="text" name="otp" placeholder="OTP" th:attr="id=${'otp_' + h.claimId}"/>
+            <input type="text" name="receiverName" placeholder="Receiver" th:attr="id=${'receiver_' + h.claimId}"/>
+            <button type="submit" th:attr="id=${'btnDeliver_' + h.claimId}">Deliver</button>
+          </form>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

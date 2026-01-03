@@ -1,0 +1,35 @@
+<html><head>
+  <meta charset="utf-8">
+  <title>Found New</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="container">
+  <h1>Buluntu + Emanet Kaydı</h1>
+  <a href="/">← Home</a>
+
+  <form method="post" action="/found/new"><input type="hidden" name="_csrf" value="anzLKnBi2LZP8l0-OcydWBhEBMCVRMYTpjWGYP5Z0Wbro8gIXUr4GBFQvYZilmsJCOGpbSx1KfihJ6I-wlexU8ds4V6KlKpq">
+    <label>Title</label>
+    <input id="foundTitle" name="title" type="text">
+
+    <label>Description</label>
+    <textarea id="foundDesc" name="description"></textarea>
+
+    <label>Category</label>
+    <input id="foundCategory" name="category" type="text" value="Cüzdan">
+
+    <label>Location</label>
+    <input id="foundLocation" name="location" type="text" value="Kampüs">
+
+    <label>Date Found (YYYY-MM-DD)</label>
+    <input id="foundDate" name="dateFound" type="text" value="2025-12-27">
+
+    <label>Shelf Code</label>
+    <input id="shelfCode" name="shelfCode" type="text" value="A-01">
+
+    <button id="btnFoundCreate" type="submit">Create</button>
+
+    
+  </form>
+
+
+</body></html>

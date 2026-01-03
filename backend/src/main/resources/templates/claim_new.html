@@ -1,0 +1,20 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <title>Claim</title>
+  <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body class="container">
+  <h1>Claim Oluştur</h1>
+  <a th:href="@{/found/list}">← Found List</a>
+
+  <form method="post" th:action="@{/claim/new}">
+    <input type="hidden" id="foundId" name="foundId" th:value="${foundId}"/>
+    <label>Proof Text</label>
+    <textarea id="proofText" name="proofText"></textarea>
+    <button id="btnClaimCreate" type="submit">Send Claim</button>
+    <div class="msg err" th:if="${error}" th:text="${error}"></div>
+  </form>
+</body>
+</html>

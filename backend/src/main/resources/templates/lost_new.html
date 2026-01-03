@@ -1,0 +1,33 @@
+<!doctype html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8"/>
+  <title>Lost New</title>
+  <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body class="container">
+  <h1>Kayıp İlanı</h1>
+  <a th:href="@{/}">← Home</a>
+
+  <form method="post" th:action="@{/lost/new}">
+    <label>Title</label>
+    <input id="lostTitle" name="title" type="text"/>
+
+    <label>Description</label>
+    <textarea id="lostDesc" name="description"></textarea>
+
+    <label>Category</label>
+    <input id="lostCategory" name="category" type="text" value="Cüzdan"/>
+
+    <label>Location</label>
+    <input id="lostLocation" name="location" type="text" value="Kampüs"/>
+
+    <label>Date Lost (YYYY-MM-DD)</label>
+    <input id="lostDate" name="dateLost" type="text" value="2025-12-27"/>
+
+    <button id="btnLostCreate" type="submit">Create</button>
+
+    <div class="msg err" th:if="${error}" th:text="${error}"></div>
+  </form>
+</body>
+</html>
