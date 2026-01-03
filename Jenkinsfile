@@ -2,14 +2,9 @@ pipeline {
   agent any
 
   environment {
-    // Jenkins (host) tarafından erişilecek URL
     APP_HOST_URL = "http://localhost:8082"
-
-    // Selenium container içinden app servisine erişilecek URL  ✅ kritik
     APP_BASE_URL = "http://app:8081"
-
-    // Jenkins host -> Selenium (docker port mapping ile)
-    SELENIUM_URL  = "http://localhost:4444/wd/hub"
+    SELENIUM_URL = "http://localhost:4444/wd/hub"
   }
 
   stages {
@@ -82,23 +77,22 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh '''
-              set +e
-              URL="${APP_HOST_URL}/login"
-              for i in $(seq 1 60); do
-                code=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
-                if [ "$code" = "200" ] || [ "$code" = "302" ]; then
-                  echo "App is ready: $URL ($code)"
+            sh """
+              URL='${APP_HOST_URL}/login'
+              for i in \$(seq 1 60); do
+                code=\$(curl -s -o /dev/null -w "%{http_code}" "\$URL" || true)
+                if [ "\$code" = "200" ] || [ "\$code" = "302" ]; then
+                  echo "App ready: \$URL (\$code)"
                   exit 0
                 fi
                 sleep 2
               done
-              echo "App did NOT become ready in time: $URL"
+              echo "App not ready: \$URL"
               exit 1
-            '''
+            """
           } else {
             bat """
-              powershell -NoProfile -Command "$u='${APP_HOST_URL}/login'; for(\$i=1;\$i -le 60;\$i++){ try{ \$r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 \$u; if(\$r.StatusCode -eq 200 -or \$r.StatusCode -eq 302){ Write-Host 'App is ready:' \$u \$r.StatusCode; exit 0 } } catch{} Start-Sleep -Seconds 2 }; Write-Host 'App did NOT become ready:' \$u; exit 1"
+              powershell -NoProfile -Command "$u='${APP_HOST_URL}/login'; for(\$i=1;\$i -le 60;\$i++){ try{ \$r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 \$u; if(\$r.StatusCode -eq 200 -or \$r.StatusCode -eq 302){ Write-Host 'App ready:' \$u \$r.StatusCode; exit 0 } } catch{} Start-Sleep -Seconds 2 }; Write-Host 'App not ready:' \$u; exit 1"
             """
           }
         }
@@ -112,3 +106,26 @@ pipeline {
             sh "./mvnw -q -pl e2e-tests -DbaseUrl=${APP_BASE_URL} -DseleniumUrl=${SELENIUM_URL} test"
           } else {
             bat "mvnw.cmd -q -pl e2e-tests -DbaseUrl=%APP_BASE_URL% -DseleniumUrl=%SELENIUM_URL% test"
+          }
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: "e2e-tests/target/surefire-reports/*.xml"
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        if (isUnix()) {
+          sh "docker compose down -v || true"
+        } else {
+          bat "docker compose down -v || exit /b 0"
+        }
+      }
+    }
+  }
+}
