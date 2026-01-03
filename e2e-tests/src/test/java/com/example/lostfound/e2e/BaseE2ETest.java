@@ -246,11 +246,19 @@ public abstract class BaseE2ETest {
     @BeforeEach
     void setUp() throws Exception {
         ChromeOptions options = new ChromeOptions();
+
         options.addArguments("--headless=new");
         options.addArguments("--no-sandbox");
         options.addArguments("--disable-dev-shm-usage");
         options.addArguments("--disable-gpu");
         options.addArguments("--window-size=1280,900");
+
+        // ✅ SSL/HTTPS saçmalıklarını engelle (ERR_SSL_PROTOCOL_ERROR fix)
+        options.setAcceptInsecureCerts(true);
+        options.addArguments("--ignore-certificate-errors");
+        options.addArguments("--allow-insecure-localhost");
+        // ✅ Chrome’un HTTP'yi otomatik HTTPS'e yükseltmesini kapat
+        options.addArguments("--disable-features=HttpsUpgrades,HttpsFirstMode");
 
         System.out.println("[E2E] seleniumUrl=" + seleniumUrl());
         System.out.println("[E2E] baseUrl=" + baseUrl());
@@ -259,6 +267,7 @@ public abstract class BaseE2ETest {
         driver = new RemoteWebDriver(new URL(seleniumUrl()), options);
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
+
 
     @AfterEach
     void tearDown() {
