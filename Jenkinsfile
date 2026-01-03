@@ -2,9 +2,16 @@ pipeline {
   agent any
 
   environment {
-    APP_BASE_URL = "http://localhost:8082"
+    // Jenkins (host) tarafından kontrol edeceğimiz URL
+    APP_HOST_URL = "http://localhost:8082"
+
+    // Selenium container içinden ulaşılacak URL  ✅ en kritik fix
+    APP_BASE_URL = "http://app:8081"
+
+
     SELENIUM_URL = "http://localhost:4444/wd/hub"
   }
+
 
   stages {
 
@@ -20,7 +27,7 @@ pipeline {
           if (isUnix()) {
             sh "./mvnw -q -DskipTests package"
           } else {
-            bat "mvnw.cmd -q -DskipTests package"
+            bat "mvnw.cmd -q -pl backend -am -DskipTests package"
           }
         }
       }
@@ -71,6 +78,25 @@ pipeline {
         }
       }
     }
+    stage('5.5-Wait App Ready') {
+      steps {
+        script {
+          bat '''
+            powershell -NoProfile -Command ^
+              "$u='http://localhost:8082/login'; ^
+               for($i=1;$i -le 30;$i++){ ^
+                 try { ^
+                   $r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 $u; ^
+                   if($r.StatusCode -eq 200 -or $r.StatusCode -eq 302){ exit 0 } ^
+                 } catch {} ^
+                 Start-Sleep -Seconds 2 ^
+               } ^
+               exit 1"
+          '''
+        }
+      }
+    }
+
 
     stage('6-E2E') {
       steps {
