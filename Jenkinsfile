@@ -13,7 +13,7 @@ pipeline {
     APP_BASE_URL = 'http://app:8081'
 
     // Host'tan Selenium'a erişim (docker port mapping)
-    SELENIUM_URL = 'http://localhost:4444/wd/hub'
+    SELENIUM_URL = 'http://localhost:4445/wd/hub'
   }
 
   stages {
