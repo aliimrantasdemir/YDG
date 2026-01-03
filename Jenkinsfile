@@ -1,10 +1,19 @@
 pipeline {
   agent any
 
+  options {
+    skipDefaultCheckout(true)
+  }
+
   environment {
-    APP_HOST_URL = "http://localhost:8082"
-    APP_BASE_URL = "http://app:8081"
-    SELENIUM_URL = "http://localhost:4444/wd/hub"
+    // Host (Jenkins Windows) tarafından kontrol edeceğimiz URL
+    APP_HOST_URL = 'http://localhost:8082'
+
+    // Selenium container içinden app servisine erişilecek URL
+    APP_BASE_URL = 'http://app:8081'
+
+    // Host'tan Selenium'a erişim (docker port mapping)
+    SELENIUM_URL = 'http://localhost:4444/wd/hub'
   }
 
   stages {
@@ -15,7 +24,8 @@ pipeline {
       }
     }
 
-    stage('2-Build') {
+    // ✅ E2E burada kesinlikle çalışmayacak: sadece backend modülünü build ediyoruz
+    stage('2-Build (backend only)') {
       steps {
         script {
           if (isUnix()) {
@@ -39,7 +49,7 @@ pipeline {
       }
       post {
         always {
-          junit allowEmptyResults: true, testResults: "backend/target/surefire-reports/*.xml"
+          junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
         }
       }
     }
@@ -56,7 +66,7 @@ pipeline {
       }
       post {
         always {
-          junit allowEmptyResults: true, testResults: "backend/target/failsafe-reports/*.xml"
+          junit allowEmptyResults: true, testResults: 'backend/target/failsafe-reports/*.xml'
         }
       }
     }
@@ -73,26 +83,23 @@ pipeline {
       }
     }
 
+    // ✅ Docker compose sonrası uygulama gerçekten ayağa kalktı mı?
     stage('5.5-Wait App Ready') {
       steps {
         script {
           if (isUnix()) {
             sh """
-              URL='${APP_HOST_URL}/login'
-              for i in \$(seq 1 60); do
-                code=\$(curl -s -o /dev/null -w "%{http_code}" "\$URL" || true)
-                if [ "\$code" = "200" ] || [ "\$code" = "302" ]; then
-                  echo "App ready: \$URL (\$code)"
-                  exit 0
-                fi
+              set +e
+              for i in \$(seq 1 30); do
+                curl -fsS ${APP_HOST_URL}/login >/dev/null && exit 0
                 sleep 2
               done
-              echo "App not ready: \$URL"
               exit 1
             """
           } else {
             bat """
-              powershell -NoProfile -Command "$u='${APP_HOST_URL}/login'; for(\$i=1;\$i -le 60;\$i++){ try{ \$r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 \$u; if(\$r.StatusCode -eq 200 -or \$r.StatusCode -eq 302){ Write-Host 'App ready:' \$u \$r.StatusCode; exit 0 } } catch{} Start-Sleep -Seconds 2 }; Write-Host 'App not ready:' \$u; exit 1"
+              @echo off
+              powershell -NoProfile -Command "\$u='${APP_HOST_URL}/login'; for(\$i=1;\$i -le 30;\$i++){ try{ \$r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 \$u; if(\$r.StatusCode -eq 200 -or \$r.StatusCode -eq 302){ exit 0 } } catch{} Start-Sleep -Seconds 2 }; exit 1"
             """
           }
         }
@@ -102,6 +109,7 @@ pipeline {
     stage('6-E2E') {
       steps {
         script {
+          // ✅ E2E testleri selenium container'a bağlanır, baseUrl container içinden app:8081 olmalı
           if (isUnix()) {
             sh "./mvnw -q -pl e2e-tests -DbaseUrl=${APP_BASE_URL} -DseleniumUrl=${SELENIUM_URL} test"
           } else {
@@ -111,7 +119,7 @@ pipeline {
       }
       post {
         always {
-          junit allowEmptyResults: true, testResults: "e2e-tests/target/surefire-reports/*.xml"
+          junit allowEmptyResults: true, testResults: 'e2e-tests/target/surefire-reports/*.xml'
         }
       }
     }
