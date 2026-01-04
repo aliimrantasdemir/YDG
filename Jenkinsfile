@@ -1,139 +1,73 @@
 pipeline {
   agent any
-
-  options {
-    skipDefaultCheckout(true)
-  }
-
-  environment {
-    // Host (Jenkins Windows) tarafından kontrol edeceğimiz URL
-    APP_HOST_URL = 'http://localhost:8082'
-
-    // Selenium container içinden app servisine erişilecek URL
-    APP_BASE_URL = 'http://app:8081'
-
-    // Host'tan Selenium'a erişim (docker port mapping)
-    SELENIUM_URL = 'http://localhost:4445/wd/hub'
-  }
+  options { timestamps() }
 
   stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
 
-    stage('1-Checkout') {
+    stage('Compose Up') {
       steps {
-        checkout scm
+        sh '''
+          docker compose up -d --build
+          docker compose ps
+        '''
       }
     }
 
-    // ✅ E2E burada kesinlikle çalışmayacak: sadece backend modülünü build ediyoruz
-    stage('2-Build (backend only)') {
+    stage('Resolve App IP') {
       steps {
-        script {
-          if (isUnix()) {
-            sh "./mvnw -q -pl backend -am -DskipTests package"
-          } else {
-            bat "mvnw.cmd -q -pl backend -am -DskipTests package"
-          }
-        }
+        sh '''
+          APP_ID=$(docker compose ps -q app)
+          APP_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$APP_ID")
+          echo "APP_ID=$APP_ID"
+          echo "APP_IP=$APP_IP"
+          echo "$APP_IP" > .app_ip
+        '''
       }
     }
 
-    stage('3-Unit Tests') {
+    stage('Smoke Check from Selenium') {
       steps {
-        script {
-          if (isUnix()) {
-            sh "./mvnw -q -pl backend test"
-          } else {
-            bat "mvnw.cmd -q -pl backend test"
-          }
-        }
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
-        }
+        sh '''
+          APP_IP=$(cat .app_ip)
+          # selenium container içinden app'e erişim testi (senin yaptığın curl)
+          docker compose exec -T selenium sh -lc "curl -fsS -I http://$APP_IP:8081/login >/dev/null"
+        '''
       }
     }
 
-    stage('4-Integration Tests') {
+    stage('Run E2E 1-2-3') {
       steps {
-        script {
-          if (isUnix()) {
-            sh "./mvnw -q -pl backend verify"
-          } else {
-            bat "mvnw.cmd -q -pl backend verify"
-          }
-        }
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: 'backend/target/failsafe-reports/*.xml'
-        }
+        sh '''
+          chmod +x mvnw || true
+          APP_IP=$(cat .app_ip)
+
+          DB_PATH="$WORKSPACE/data/lostfound.db"
+          echo "DB_PATH=$DB_PATH"
+          ls -lah "$WORKSPACE/data" || true
+
+          ./mvnw -pl e2e-tests clean test \
+            "-Dtest=Scenario01_*,Scenario02_*,Scenario03_*" \
+            "-DbaseUrl=http://$APP_IP:8081" \
+            "-DseleniumRemoteUrl=http://localhost:4445/wd/hub" \
+            "-DdbPath=$DB_PATH"
+        '''
       }
     }
 
-    stage('5-Run on Docker') {
+    stage('Test Reports') {
       steps {
-        script {
-          if (isUnix()) {
-            sh "docker compose up -d --build"
-          } else {
-            bat "docker compose up -d --build"
-          }
-        }
-      }
-    }
-
-    // ✅ Docker compose sonrası uygulama gerçekten ayağa kalktı mı?
-    stage('5.5-Wait App Ready') {
-      steps {
-        script {
-          if (isUnix()) {
-            sh """
-              set +e
-              for i in \$(seq 1 30); do
-                curl -fsS ${APP_HOST_URL}/login >/dev/null && exit 0
-                sleep 2
-              done
-              exit 1
-            """
-          } else {
-            bat """
-              @echo off
-              powershell -NoProfile -Command "\$u='${APP_HOST_URL}/login'; for(\$i=1;\$i -le 30;\$i++){ try{ \$r=Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 \$u; if(\$r.StatusCode -eq 200 -or \$r.StatusCode -eq 302){ exit 0 } } catch{} Start-Sleep -Seconds 2 }; exit 1"
-            """
-          }
-        }
-      }
-    }
-
-    stage('6-E2E') {
-      steps {
-        script {
-          // ✅ E2E testleri selenium container'a bağlanır, baseUrl container içinden app:8081 olmalı
-          if (isUnix()) {
-            sh "./mvnw -q -pl e2e-tests -DbaseUrl=${APP_BASE_URL} -DseleniumUrl=${SELENIUM_URL} test"
-          } else {
-            bat "mvnw.cmd -q -pl e2e-tests -DbaseUrl=%APP_BASE_URL% -DseleniumUrl=%SELENIUM_URL% test"
-          }
-        }
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: 'e2e-tests/target/surefire-reports/*.xml'
-        }
+        junit 'e2e-tests/target/surefire-reports/*.xml'
+        archiveArtifacts artifacts: 'e2e-tests/target/**', allowEmptyArchive: true
       }
     }
   }
 
   post {
     always {
-      script {
-        if (isUnix()) {
-          sh "docker compose down -v || true"
-        } else {
-          bat "docker compose down -v || exit /b 0"
-        }
-      }
+      sh 'docker compose down -v || true'
     }
   }
 }

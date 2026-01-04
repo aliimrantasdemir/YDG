@@ -7,10 +7,22 @@ services:
     volumes:
       - ./data:/app/data
 
-
-
   selenium:
     image: selenium/standalone-chrome:latest
     shm_size: 2gb
     ports:
       - "4445:4444"
+
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: ydg-ci-jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:

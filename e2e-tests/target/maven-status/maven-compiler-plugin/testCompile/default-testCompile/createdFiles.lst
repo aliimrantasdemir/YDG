@@ -1,2 +1,11 @@
+com\example\lostfound\e2e\Scenario01_PlaceholderTest.class
+com\example\lostfound\e2e\Scenario02_PlaceholderTest.class
+com\example\lostfound\e2e\Scenario07_PlaceholderTest.class
+com\example\lostfound\e2e\Scenario08_PlaceholderTest.class
+com\example\lostfound\e2e\Scenario06_PlaceholderTest.class
+com\example\lostfound\e2e\Scenario09_PlaceholderTest.class
 com\example\lostfound\e2e\BaseE2ETest.class
+com\example\lostfound\e2e\Scenario04_PlaceholderTest.class
+com\example\lostfound\e2e\Scenario10_PlaceholderTest.class
 com\example\lostfound\e2e\Scenario03_CreateLostTest.class
+com\example\lostfound\e2e\Scenario05_PlaceholderTest.class
