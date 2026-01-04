@@ -263,7 +263,7 @@ public abstract class BaseE2ETest {
                 "--allow-insecure-localhost",
 
                 // 🔥 KRİTİK: HTTPS-first / HTTPS-only / otomatik upgrade kapansın
-                "--disable-features=HttpsOnlyMode,HttpsFirstMode,HTTPSUpgrades,AutomaticHttpsUpgrades,PreferHTTPS",
+                "--disable-features=HttpsOnlyMode,HttpsFirstMode,HttpsUpgrades,AutomaticHttpsUpgrades,PreferHTTPS",
 
                 // bazen ek yardımcı olur (zararı yok)
                 "--test-type",
