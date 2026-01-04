@@ -247,8 +247,10 @@ public abstract class BaseE2ETest {
     void setUp() throws Exception {
         ChromeOptions options = new ChromeOptions();
 
-        // Chrome bazen http -> https yükseltmesi yapıyor; bunu kapatıyoruz
+        // SSL sertifikası vs sorunlarında engel olmasın
         options.setAcceptInsecureCerts(true);
+
+        // ✅ Chrome'un HTTP -> HTTPS zorlamasını KESİN kapat
         options.addArguments(
                 "--headless=new",
                 "--no-sandbox",
@@ -256,10 +258,16 @@ public abstract class BaseE2ETest {
                 "--disable-gpu",
                 "--window-size=1280,900",
 
-                // SSL / HTTPS-first kaynaklı problemler için
+                // SSL / sertifika (gerekirse)
                 "--ignore-certificate-errors",
                 "--allow-insecure-localhost",
-                "--disable-features=HttpsFirstMode,AutomaticHttpsUpgrades,HttpsUpgrades"
+
+                // 🔥 KRİTİK: HTTPS-first / HTTPS-only / otomatik upgrade kapansın
+                "--disable-features=HttpsOnlyMode,HttpsFirstMode,HTTPSUpgrades,AutomaticHttpsUpgrades,PreferHTTPS",
+
+                // bazen ek yardımcı olur (zararı yok)
+                "--test-type",
+                "--disable-background-networking"
         );
 
         System.out.println("[E2E] seleniumUrl=" + seleniumUrl());
@@ -269,6 +277,7 @@ public abstract class BaseE2ETest {
         driver = new RemoteWebDriver(new URL(seleniumUrl()), options);
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
+
 
 
 
