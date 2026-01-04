@@ -1,0 +1,21 @@
+﻿# --- Maven / Java build outputs ---
+**/target/
+**/*.log
+**/*.tmp
+
+# --- IntelliJ / JetBrains ---
+.idea/
+*.iml
+out/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- Project-specific: local DB + artifacts ---
+data/
+**/*.db
+**/e2e-artifacts/
+**/surefire-reports/
+**/failsafe-reports/
