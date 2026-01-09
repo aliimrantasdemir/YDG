@@ -6,6 +6,7 @@ import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.*;
+import org.openqa.selenium.PageLoadStrategy;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,13 +32,24 @@ public abstract class BaseE2ETest {
 
     protected String baseUrl() {
         String s = System.getProperty("baseUrl");
-        if (s != null && !s.isBlank()) return s;
+        if (s == null || s.isBlank()) {
+            String env = System.getenv("APP_BASE_URL");
+            s = (env != null && !env.isBlank()) ? env : "http://host.docker.internal:8082";
+        }
 
-        String env = System.getenv("APP_BASE_URL");
-        if (env != null && !env.isBlank()) return env;
+        s = s.trim();
 
-        return "http://host.docker.internal:8082";
+        // sonda slash varsa kaldır
+        while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+
+        // E2E ortamında yanlışlıkla https gelirse http'ye zorla (SSL_PROTOCOL_ERROR fix)
+        if (s.startsWith("https://")) {
+            s = "http://" + s.substring("https://".length());
+        }
+
+        return s;
     }
+
 
     protected String seleniumUrl() {
         String s = System.getProperty("seleniumRemoteUrl");
@@ -46,7 +58,7 @@ public abstract class BaseE2ETest {
         String env = System.getenv("SELENIUM_URL");
         if (env != null && !env.isBlank()) return ensureWdHub(env);
 
-        return "http://localhost:4444/wd/hub";
+        return "http://localhost:4445/wd/hub";
     }
 
     private String ensureWdHub(String s) {
@@ -250,24 +262,36 @@ public abstract class BaseE2ETest {
         // SSL sertifikası vs sorunlarında engel olmasın
         options.setAcceptInsecureCerts(true);
 
-        // ✅ Chrome'un HTTP -> HTTPS zorlamasını KESİN kapat
+        // ✅ Page load daha stabil (özellikle CI / headless)
+        options.setPageLoadStrategy(PageLoadStrategy.EAGER);
+
+        // ✅ Chrome argümanları
         options.addArguments(
                 "--headless=new",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
-                "--disable-gpu",
                 "--window-size=1280,900",
 
-                // SSL / sertifika (gerekirse)
+                // Sertifika / localhost izinleri
                 "--ignore-certificate-errors",
                 "--allow-insecure-localhost",
 
-                // 🔥 KRİTİK: HTTPS-first / HTTPS-only / otomatik upgrade kapansın
-                "--disable-features=HttpsOnlyMode,HttpsFirstMode,HttpsUpgrades,AutomaticHttpsUpgrades,PreferHTTPS",
+                // 🔥 ASIL FIX: HTTP -> HTTPS upgrade'i kapat (ERR_SSL_PROTOCOL_ERROR çözer)
+                "--disable-features=HttpsUpgrades,HttpsFirstMode",
 
-                // bazen ek yardımcı olur (zararı yok)
-                "--test-type",
-                "--disable-background-networking"
+                // Stabilite / CI için ekler
+                "--disable-background-networking",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-breakpad",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                "--disable-default-apps",
+
+                // Proxy kapat (bazı ortamlarda gariplik yapıyor)
+                "--proxy-server=direct://",
+                "--proxy-bypass-list=*"
         );
 
         System.out.println("[E2E] seleniumUrl=" + seleniumUrl());
@@ -275,8 +299,15 @@ public abstract class BaseE2ETest {
         System.out.println("[E2E][DB] dbPath=" + dbPath());
 
         driver = new RemoteWebDriver(new URL(seleniumUrl()), options);
+
+        // timeouts
+        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(60));
+        driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(30));
+
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
+
+
 
 
 
@@ -373,9 +404,29 @@ public abstract class BaseE2ETest {
     // ------------------ NAV / FIND HELPERS ------------------
 
     protected void open(String path) {
-        driver.get(baseUrl() + path);
-        wait.until(d -> ((JavascriptExecutor) d).executeScript("return document.readyState").equals("complete"));
+        if (path == null) path = "";
+        if (!path.startsWith("/")) path = "/" + path;
+
+        String url = baseUrl() + path;
+
+        // güvenlik: URL yanlışlıkla https olduysa http'ye çevir
+        if (url.startsWith("https://")) {
+            url = "http://" + url.substring("https://".length());
+        }
+
+        driver.get(url);
+
+        // EAGER kullandığımız için complete beklemeyelim; DOM interactive yeter
+        try {
+            wait.until(d -> {
+                Object rs = ((JavascriptExecutor) d).executeScript("return document.readyState");
+                return rs != null && (rs.equals("interactive") || rs.equals("complete"));
+            });
+        } catch (Exception ignored) {
+            // SSL/redirect gibi durumlarda burada patlatmak yerine test içinde fail daha okunaklı oluyor
+        }
     }
+
 
     protected WebElement byId(String id) {
         try {
