@@ -8,14 +8,18 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-       - SPRING_PROFILES_ACTIVE=e2e
-       - DB_PATH=/app/data/lostfound.db
+      - SPRING_PROFILES_ACTIVE=e2e
+      - DB_PATH=/app/data/lostfound.db
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - app.local
 
   selenium:
     image: selenium/standalone-chrome:latest
     environment:
-    - 'SE_NODE_STEREOTYPE={"browserName":"chrome","platformName":"Linux","goog:chromeOptions":{"binary":"/usr/bin/google-chrome","args":["--disable-features=HttpsUpgrades,HttpsFirstMode","--no-sandbox","--disable-dev-shm-usage"]}}'
+      - 'SE_NODE_STEREOTYPE={"browserName":"chrome","platformName":"Linux","goog:chromeOptions":{"binary":"/usr/bin/google-chrome","args":["--disable-features=HttpsUpgrades,HttpsFirstMode","--no-sandbox","--disable-dev-shm-usage"]}}'
     container_name: ydg-ci-selenium
     shm_size: 2gb
     ports:
@@ -30,7 +34,6 @@ services:
       - "50000:50000"
     volumes:
       - jenkins_home:/var/jenkins_home
-      # Jenkins container içinden docker çalıştırmak için:
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
