@@ -34,22 +34,27 @@ public abstract class BaseE2ETest {
         String s = System.getProperty("baseUrl");
         if (s == null || s.isBlank()) {
             String env = System.getenv("APP_BASE_URL");
-            s = (env != null && !env.isBlank()) ? env : "http://host.docker.internal:8082";
+            // CI’de selenium container içinden erişim için en sağlıklısı docker network hostname’idir:
+            s = (env != null && !env.isBlank()) ? env : "http://app.local:8081";
         }
 
         s = s.trim();
 
+        // scheme yoksa ekle (app.local:8081 gibi gelirse patlamasın)
+        if (!s.startsWith("http://") && !s.startsWith("https://")) {
+            s = "http://" + s;
+        }
+
         // sonda slash varsa kaldır
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
 
-        // E2E ortamında yanlışlıkla https gelirse http'ye zorla (SSL_PROTOCOL_ERROR fix)
+        // yanlışlıkla https gelirse http'ye zorla (ERR_SSL_PROTOCOL_ERROR fix)
         if (s.startsWith("https://")) {
             s = "http://" + s.substring("https://".length());
         }
 
         return s;
     }
-
 
     protected String seleniumUrl() {
         String s = System.getProperty("seleniumRemoteUrl");
@@ -80,11 +85,9 @@ public abstract class BaseE2ETest {
         String env2 = System.getenv("DB_PATH");
         if (env2 != null && !env2.isBlank()) return normalizePath(env2);
 
-        // stabil bilinen yol
         Path known = Paths.get("C:/lostfound-java-sqlite/data/lostfound.db");
         if (Files.exists(known)) return normalizePath(known.toString());
 
-        // projede yukarı doğru ara
         Path found = findUpwards("data/lostfound.db", 8);
         if (found != null) return normalizePath(found.toString());
 
@@ -134,16 +137,10 @@ public abstract class BaseE2ETest {
         return false;
     }
 
-    /**
-     * Found tablosu/kolonu projede farklı isimlendirilmiş olabilir diye:
-     * 1) found_reports(title) dener
-     * 2) olmadı: adı "found" içeren tabloları bulur, title/name benzeri kolonlarda arar
-     */
     protected boolean dbHasFoundTitle(String title) throws Exception {
         String url = "jdbc:sqlite:" + dbPath();
         try (Connection con = DriverManager.getConnection(url)) {
 
-            // 1) en olası tablo
             try (PreparedStatement ps = con.prepareStatement(
                     "SELECT 1 FROM found_reports WHERE title = ? LIMIT 1")) {
                 ps.setString(1, title);
@@ -152,7 +149,6 @@ public abstract class BaseE2ETest {
                 }
             } catch (SQLException ignored) {}
 
-            // 2) found* tablolarını keşfet
             List<String> tables = new ArrayList<>();
             try (PreparedStatement ps = con.prepareStatement(
                     "SELECT name FROM sqlite_master " +
@@ -204,55 +200,6 @@ public abstract class BaseE2ETest {
         return false;
     }
 
-    protected void dumpDbSchemaOnce() {
-        try {
-            String path = dbPath();
-            String url = "jdbc:sqlite:" + path;
-
-            System.out.println("[E2E][DB] SCHEMA DUMP dbPath=" + path);
-
-            try (Connection con = DriverManager.getConnection(url)) {
-                try (PreparedStatement ps = con.prepareStatement(
-                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")) {
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            String table = rs.getString(1);
-                            System.out.println("[E2E][DB] table=" + table);
-
-                            List<String> cols = new ArrayList<>();
-                            try (Statement st = con.createStatement();
-                                 ResultSet crs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
-                                while (crs.next()) cols.add(crs.getString("name"));
-                            } catch (SQLException ignored) {}
-
-                            System.out.println("[E2E][DB]   cols=" + cols);
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("[E2E][DB] SCHEMA DUMP FAILED: " + e.getMessage());
-        }
-    }
-
-    protected void dumpUsers() {
-        try {
-            String url = "jdbc:sqlite:" + dbPath();
-            try (var con = DriverManager.getConnection(url);
-                 var st = con.createStatement();
-                 var rs = st.executeQuery("SELECT id,email,role FROM users ORDER BY id")) {
-                System.out.println("[E2E][DB] USERS:");
-                while (rs.next()) {
-                    System.out.println("  id=" + rs.getLong("id") +
-                            " email=" + rs.getString("email") +
-                            " role=" + rs.getString("role"));
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("[E2E][DB] dumpUsers failed: " + e.getMessage());
-        }
-    }
-
     // ------------------ SETUP / TEARDOWN ------------------
 
     @BeforeEach
@@ -262,24 +209,35 @@ public abstract class BaseE2ETest {
         // SSL sertifikası vs sorunlarında engel olmasın
         options.setAcceptInsecureCerts(true);
 
-        // ✅ Page load daha stabil (özellikle CI / headless)
+        // Page load daha stabil
         options.setPageLoadStrategy(PageLoadStrategy.EAGER);
 
-        // ✅ Chrome argümanları
+        // 🔥 Chrome 143 için “HTTPS-first / upgrade” varyantlarının hepsini kapatıyoruz:
+        String disableHttpsFeatures =
+                "HttpsUpgrades,HttpsFirstMode,HTTPSFirstMode," +
+                        "HttpsFirstModeV2,HTTPSFirstModeV2," +
+                        "HttpsOnlyMode,HTTPSOnlyMode," +
+                        "HttpsUpgradesForTypicallySecureUsers,HttpsFirstModeForTypicallySecureUsers,HTTPSFirstModeForTypicallySecureUsers," +
+                        "AutomaticHttpsUpgrades,PreferHTTPS,PreferHttps";
+
         options.addArguments(
                 "--headless=new",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
+                "--disable-gpu",
                 "--window-size=1280,900",
 
-                // Sertifika / localhost izinleri
                 "--ignore-certificate-errors",
                 "--allow-insecure-localhost",
 
-                // 🔥 ASIL FIX: HTTP -> HTTPS upgrade'i kapat (ERR_SSL_PROTOCOL_ERROR çözer)
-                "--disable-features=HttpsUpgrades,HttpsFirstMode",
+                // 👇 ekstra güvenlik: mixed content / http üstünde takılmasın
+                "--allow-running-insecure-content",
+                "--test-type",
 
-                // Stabilite / CI için ekler
+                // ✅ ASIL FIX
+                "--disable-features=" + disableHttpsFeatures,
+
+                // CI stabilite
                 "--disable-background-networking",
                 "--disable-background-timer-throttling",
                 "--disable-renderer-backgrounding",
@@ -289,7 +247,7 @@ public abstract class BaseE2ETest {
                 "--disable-extensions",
                 "--disable-default-apps",
 
-                // Proxy kapat (bazı ortamlarda gariplik yapıyor)
+                // Proxy kapat
                 "--proxy-server=direct://",
                 "--proxy-bypass-list=*"
         );
@@ -300,17 +258,11 @@ public abstract class BaseE2ETest {
 
         driver = new RemoteWebDriver(new URL(seleniumUrl()), options);
 
-        // timeouts
         driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(60));
         driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(30));
 
         wait = new WebDriverWait(driver, Duration.ofSeconds(30));
     }
-
-
-
-
-
 
     @AfterEach
     void tearDown() {
@@ -329,7 +281,7 @@ public abstract class BaseE2ETest {
             open("/logout");
         } catch (Exception ignored) {}
     }
-    // ✅ Scenario03 için gerekli: login'e düştüyse tekrar login ol
+
     protected void ensureLoggedIn(String email, String password) {
         if (onLoginPage()) {
             login(email, password);
@@ -396,7 +348,6 @@ public abstract class BaseE2ETest {
                 || !driver.findElements(By.id("email")).isEmpty();
     }
 
-    // ✅ Scenario03 için gerekli
     protected boolean isLoggedIn() {
         return !onLoginPage();
     }
@@ -416,17 +367,13 @@ public abstract class BaseE2ETest {
 
         driver.get(url);
 
-        // EAGER kullandığımız için complete beklemeyelim; DOM interactive yeter
         try {
             wait.until(d -> {
                 Object rs = ((JavascriptExecutor) d).executeScript("return document.readyState");
                 return rs != null && (rs.equals("interactive") || rs.equals("complete"));
             });
-        } catch (Exception ignored) {
-            // SSL/redirect gibi durumlarda burada patlatmak yerine test içinde fail daha okunaklı oluyor
-        }
+        } catch (Exception ignored) {}
     }
-
 
     protected WebElement byId(String id) {
         try {
@@ -442,7 +389,6 @@ public abstract class BaseE2ETest {
         catch (NoSuchElementException e) { return false; }
     }
 
-    // ✅ TEK TANE (duplicate yok)
     protected String xpathLiteral(String s) {
         if (s == null) return "''";
         if (!s.contains("'")) return "'" + s + "'";
@@ -554,14 +500,12 @@ public abstract class BaseE2ETest {
         ((JavascriptExecutor) driver).executeScript("arguments[0].submit();", form);
     }
 
-    /** Scenario04'ün istediği method: formu JS ile zorla submit */
     protected void forceSubmitInSameFormOf(String fieldId) {
         WebElement field = byId(fieldId);
         WebElement form = field.findElement(By.xpath("ancestor::form[1]"));
         ((JavascriptExecutor) driver).executeScript("arguments[0].submit();", form);
     }
 
-    // ✅ Scenario08 debug: HTML5 validation mesajları
     protected void logHtml5ValidationMessagesInSameFormOf(String fieldId) {
         try {
             WebElement field = byId(fieldId);
@@ -584,7 +528,6 @@ public abstract class BaseE2ETest {
         } catch (Exception ignored) {}
     }
 
-    // ✅ Scenario08 debug: :invalid alanları logla
     protected void logInvalidFieldsOf(String fieldId) {
         try {
             WebElement field = byId(fieldId);
@@ -623,7 +566,6 @@ public abstract class BaseE2ETest {
         }
     }
 
-    /** Scenario04'ün istediği method */
     protected boolean waitBodyTextContainsWithRefresh(String text, int totalSeconds) {
         long end = System.currentTimeMillis() + totalSeconds * 1000L;
         while (System.currentTimeMillis() < end) {
@@ -669,7 +611,6 @@ public abstract class BaseE2ETest {
         }
     }
 
-    /** Scenario04'ün istediği method */
     protected void logBodyText(String tag) {
         try {
             String t = driver.findElement(By.tagName("body")).getText();
@@ -784,12 +725,60 @@ public abstract class BaseE2ETest {
         );
     }
 
-    // --- Backward compatibility (eski testler için) ---
+    // --- Backward compatibility ---
     protected boolean dbHasTitle(String title) throws Exception {
         return dbHasLostTitle(title);
     }
     protected boolean waitDbHasTitle(String title, int totalSeconds) {
         return waitDbHasLostTitle(title, totalSeconds);
+    }
+    protected void dumpUsers() {
+        try {
+            String url = "jdbc:sqlite:" + dbPath();
+            try (var con = DriverManager.getConnection(url);
+                 var st = con.createStatement();
+                 var rs = st.executeQuery("SELECT id, email, role FROM users ORDER BY id")) {
+
+                System.out.println("[E2E][DB] USERS:");
+                while (rs.next()) {
+                    System.out.println("  id=" + rs.getLong("id")
+                            + " email=" + rs.getString("email")
+                            + " role=" + rs.getString("role"));
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[E2E][DB] dumpUsers failed: " + e.getMessage());
+        }
+    }
+
+    protected void dumpDbSchemaOnce() {
+        try {
+            String path = dbPath();
+            String url = "jdbc:sqlite:" + path;
+
+            System.out.println("[E2E][DB] SCHEMA DUMP dbPath=" + path);
+
+            try (Connection con = DriverManager.getConnection(url);
+                 PreparedStatement ps = con.prepareStatement(
+                         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+                 ResultSet rs = ps.executeQuery()) {
+
+                while (rs.next()) {
+                    String table = rs.getString(1);
+                    System.out.println("[E2E][DB] table=" + table);
+
+                    List<String> cols = new ArrayList<>();
+                    try (Statement st = con.createStatement();
+                         ResultSet crs = st.executeQuery("PRAGMA table_info(" + table + ")")) {
+                        while (crs.next()) cols.add(crs.getString("name"));
+                    } catch (SQLException ignored) {}
+
+                    System.out.println("[E2E][DB]   cols=" + cols);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[E2E][DB] SCHEMA DUMP FAILED: " + e.getMessage());
+        }
     }
 
 }
