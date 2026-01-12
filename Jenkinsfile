@@ -54,6 +54,24 @@ pipeline {
       }
     }
 
+    // ✅ MADDE 3
+    stage('Unit Tests (backend)') {
+      steps {
+        bat '''
+          .\\mvnw.cmd -pl backend -am test
+        '''
+      }
+    }
+
+    // ✅ MADDE 4
+    stage('Integration Tests (backend)') {
+      steps {
+        bat '''
+          .\\mvnw.cmd -pl backend -am verify
+        '''
+      }
+    }
+
     stage('Compose Build (app)') {
       steps {
         bat 'docker compose build app'
@@ -91,22 +109,8 @@ pipeline {
       }
     }
 
-    stage('Debug: /login headers (redirect var mı?)') {
-      steps {
-        bat '''
-          docker compose exec -T selenium sh -lc "echo '--- HEAD ---'; \
-            curl -svI http://app.local:8081/login 2>&1 | head -n 80; \
-            echo '--- EFFECTIVE (first bytes) ---'; \
-            curl -sv http://app.local:8081/login -o /dev/null 2>&1 | head -n 80"
-        '''
-      }
-    }
-
     stage('E2E Tests (1-2-3)') {
       steps {
-        bat 'docker compose logs --no-color --tail=120 app'
-        bat 'docker compose logs --no-color --tail=120 selenium'
-
         bat '''
           .\\mvnw.cmd -pl e2e-tests clean test ^
             "-Dtest=Scenario01_*,Scenario02_*,Scenario03_*" ^
@@ -121,6 +125,11 @@ pipeline {
   post {
     always {
       bat 'docker compose logs --no-color > docker-logs.txt'
+
+      // ✅ raporlama: Jenkins Test Result (çok kritik)
+      junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
+      junit allowEmptyResults: true, testResults: 'backend/target/failsafe-reports/*.xml'
+      junit allowEmptyResults: true, testResults: 'e2e-tests/target/surefire-reports/*.xml'
 
       archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
       archiveArtifacts artifacts: 'e2e-tests/target/surefire-reports/**', allowEmptyArchive: true
