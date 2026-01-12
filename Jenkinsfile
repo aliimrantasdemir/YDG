@@ -1,73 +1,132 @@
 pipeline {
   agent any
-  options { timestamps() }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  environment {
+    REPO_URL = 'https://github.com/aliimrantasdemir/YDG.git'
+    BRANCH   = 'fix/jenkins-e2e'
+    BASE_URL = 'http://app.local:8081'
+    SELENIUM_REMOTE_URL = 'http://localhost:4445/wd/hub'
+    DB_PATH = "${WORKSPACE}\\data\\lostfound.db"
+  }
 
   stages {
+
+    stage('Cleanup (previous)') {
+      steps {
+        bat 'cmd /c "docker compose down -v --remove-orphans || exit /b 0"'
+      }
+    }
+
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        bat 'echo WORKSPACE=%CD%'
+        script {
+          deleteDir()
+          git branch: env.BRANCH, url: env.REPO_URL
+        }
+        bat 'git rev-parse --short HEAD'
+      }
     }
 
-    stage('Compose Up') {
+    stage('Docker erişimi var mı?') {
       steps {
-        sh '''
-          docker compose up -d --build
-          docker compose ps
+        bat 'docker version'
+        bat 'docker compose version'
+      }
+    }
+
+    stage('Build backend jar (mvn package)') {
+      steps {
+        bat '''
+          .\\mvnw.cmd -pl backend -am -DskipTests package
+          if not exist backend\\target\\backend-1.0.0.jar (
+            echo ERROR: backend jar not found!
+            dir backend\\target
+            exit /b 1
+          )
+          dir backend\\target\\backend-1.0.0.jar
         '''
       }
     }
 
-    stage('Resolve App IP') {
+    stage('Compose Build (app)') {
       steps {
-        sh '''
-          APP_ID=$(docker compose ps -q app)
-          APP_IP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$APP_ID")
-          echo "APP_ID=$APP_ID"
-          echo "APP_IP=$APP_IP"
-          echo "$APP_IP" > .app_ip
+        bat 'docker compose build app'
+      }
+    }
+
+    stage('Compose UP (app + selenium)') {
+      steps {
+        bat 'if not exist data mkdir data'
+        bat 'docker compose up -d app selenium'
+        bat 'docker compose ps'
+        bat 'docker compose logs --no-color --tail=80 app'
+        bat 'docker compose logs --no-color --tail=80 selenium'
+      }
+    }
+
+    stage('App hazır mı? (wait)') {
+      steps {
+        bat '''
+          docker compose exec -T selenium sh -lc "set -e; \
+            for i in $(seq 1 60); do \
+              status=$(curl -sI http://app.local:8081/login | head -n 1 || true); \
+              echo status=$status; \
+              echo $status | grep -Eqi '( 200 | 302 )' && echo READY && exit 0; \
+              echo waiting-$i; sleep 2; \
+            done; \
+            echo NOT_READY; exit 1"
+        '''
+
+        bat '''
+          powershell -NoProfile -Command ^
+            "$ProgressPreference='SilentlyContinue';" ^
+            "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://localhost:8082/login) | Out-Null; Write-Host 'HOST_READY' } catch { Write-Host 'HOST_NOT_READY' }"
         '''
       }
     }
 
-    stage('Smoke Check from Selenium') {
+    stage('Debug: /login headers (redirect var mı?)') {
       steps {
-        sh '''
-          APP_IP=$(cat .app_ip)
-          # selenium container içinden app'e erişim testi (senin yaptığın curl)
-          docker compose exec -T selenium sh -lc "curl -fsS -I http://$APP_IP:8081/login >/dev/null"
+        bat '''
+          docker compose exec -T selenium sh -lc "echo '--- HEAD ---'; \
+            curl -svI http://app.local:8081/login 2>&1 | head -n 80; \
+            echo '--- EFFECTIVE (first bytes) ---'; \
+            curl -sv http://app.local:8081/login -o /dev/null 2>&1 | head -n 80"
         '''
       }
     }
 
-    stage('Run E2E 1-2-3') {
+    stage('E2E Tests (1-2-3)') {
       steps {
-        sh '''
-          chmod +x mvnw || true
-          APP_IP=$(cat .app_ip)
+        bat 'docker compose logs --no-color --tail=120 app'
+        bat 'docker compose logs --no-color --tail=120 selenium'
 
-          DB_PATH="$WORKSPACE/data/lostfound.db"
-          echo "DB_PATH=$DB_PATH"
-          ls -lah "$WORKSPACE/data" || true
-
-          ./mvnw -pl e2e-tests clean test \
-            "-Dtest=Scenario01_*,Scenario02_*,Scenario03_*" \
-            "-DbaseUrl=http://$APP_IP:8081" \
-            "-DseleniumRemoteUrl=http://localhost:4445/wd/hub" \
-            "-DdbPath=$DB_PATH"
+        bat '''
+          .\\mvnw.cmd -pl e2e-tests clean test ^
+            "-Dtest=Scenario01_*,Scenario02_*,Scenario03_*" ^
+            "-DbaseUrl=%BASE_URL%" ^
+            "-DseleniumRemoteUrl=%SELENIUM_REMOTE_URL%" ^
+            "-DdbPath=%DB_PATH%"
         '''
-      }
-    }
-
-    stage('Test Reports') {
-      steps {
-        junit 'e2e-tests/target/surefire-reports/*.xml'
-        archiveArtifacts artifacts: 'e2e-tests/target/**', allowEmptyArchive: true
       }
     }
   }
 
   post {
     always {
-      sh 'docker compose down -v || true'
+      bat 'docker compose logs --no-color > docker-logs.txt'
+
+      archiveArtifacts artifacts: 'docker-logs.txt', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'e2e-tests/target/surefire-reports/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'e2e-tests/target/e2e-artifacts/**', allowEmptyArchive: true
+
+      bat 'cmd /c "docker compose down -v --remove-orphans || exit /b 0"'
     }
   }
 }

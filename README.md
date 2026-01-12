@@ -26,3 +26,5 @@ Integration:
 - `./mvnw -pl backend verify`
 
 > E2E selenium testleri şimdilik placeholder ve default skip (skipE2E=true).
+
+aliimrantasdemir
