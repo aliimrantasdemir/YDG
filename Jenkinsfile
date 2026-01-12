@@ -54,7 +54,6 @@ pipeline {
       }
     }
 
-    // ✅ MADDE 3
     stage('Unit Tests (backend)') {
       steps {
         bat '''
@@ -63,7 +62,6 @@ pipeline {
       }
     }
 
-    // ✅ MADDE 4
     stage('Integration Tests (backend)') {
       steps {
         bat '''
@@ -126,7 +124,6 @@ pipeline {
     always {
       bat 'docker compose logs --no-color > docker-logs.txt'
 
-      // ✅ raporlama: Jenkins Test Result (çok kritik)
       junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
       junit allowEmptyResults: true, testResults: 'backend/target/failsafe-reports/*.xml'
       junit allowEmptyResults: true, testResults: 'e2e-tests/target/surefire-reports/*.xml'
