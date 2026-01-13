@@ -13,12 +13,10 @@ public class Scenario03_CreateLostTest extends BaseE2ETest {
         String email = "user@demo.com";
         String pass  = "user123";
 
-        // 1) Login + create sayfasını aç
         login(email, pass);
         openProtected("/lost/new", email, pass);
         dumpHtmlAndPng("lost_new_open");
 
-        // 2) Form doldur
         String title = unique("cuzdan");
 
         setById("lostTitle", title);
@@ -29,16 +27,13 @@ public class Scenario03_CreateLostTest extends BaseE2ETest {
 
         dumpHtmlAndPng("lost_new_filled");
 
-        // 3) Submit
         clickSubmitInSameFormOf("lostTitle");
 
-        // 4) Login’e düştüyse toparla + artifact al
         ensureLoggedIn(email, pass);
         dumpHtmlAndPng("after_submit");
         dumpUsers();
         dumpDbSchemaOnce();
         logBodyText("after_submit");
-        // 5) ✅ KALICI DOĞRULAMA: DB’de oluştu mu?
         boolean created = waitDbHasLostTitle(title, 30);
 
 

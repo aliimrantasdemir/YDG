@@ -28,27 +28,22 @@ public abstract class BaseE2ETest {
     protected WebDriver driver;
     protected WebDriverWait wait;
 
-    // ------------------ URL HELPERS ------------------
 
     protected String baseUrl() {
         String s = System.getProperty("baseUrl");
         if (s == null || s.isBlank()) {
             String env = System.getenv("APP_BASE_URL");
-            // CI’de selenium container içinden erişim için en sağlıklısı docker network hostname’idir:
             s = (env != null && !env.isBlank()) ? env : "http://app.local:8081";
         }
 
         s = s.trim();
 
-        // scheme yoksa ekle (app.local:8081 gibi gelirse patlamasın)
         if (!s.startsWith("http://") && !s.startsWith("https://")) {
             s = "http://" + s;
         }
 
-        // sonda slash varsa kaldır
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
 
-        // yanlışlıkla https gelirse http'ye zorla (ERR_SSL_PROTOCOL_ERROR fix)
         if (s.startsWith("https://")) {
             s = "http://" + s.substring("https://".length());
         }
@@ -72,8 +67,6 @@ public abstract class BaseE2ETest {
         if (s.endsWith("/")) return s + "wd/hub";
         return s + "/wd/hub";
     }
-
-    // ------------------ DB HELPERS ------------------
 
     protected String dbPath() {
         String p = System.getProperty("dbPath");
@@ -206,13 +199,10 @@ public abstract class BaseE2ETest {
     void setUp() throws Exception {
         ChromeOptions options = new ChromeOptions();
 
-        // SSL sertifikası vs sorunlarında engel olmasın
         options.setAcceptInsecureCerts(true);
 
-        // Page load daha stabil
         options.setPageLoadStrategy(PageLoadStrategy.EAGER);
 
-        // 🔥 Chrome 143 için “HTTPS-first / upgrade” varyantlarının hepsini kapatıyoruz:
         String disableHttpsFeatures =
                 "HttpsUpgrades,HttpsFirstMode,HTTPSFirstMode," +
                         "HttpsFirstModeV2,HTTPSFirstModeV2," +
@@ -230,14 +220,11 @@ public abstract class BaseE2ETest {
                 "--ignore-certificate-errors",
                 "--allow-insecure-localhost",
 
-                // 👇 ekstra güvenlik: mixed content / http üstünde takılmasın
                 "--allow-running-insecure-content",
                 "--test-type",
 
-                // ✅ ASIL FIX
                 "--disable-features=" + disableHttpsFeatures,
 
-                // CI stabilite
                 "--disable-background-networking",
                 "--disable-background-timer-throttling",
                 "--disable-renderer-backgrounding",
@@ -269,7 +256,6 @@ public abstract class BaseE2ETest {
         if (driver != null) driver.quit();
     }
 
-    // ------------------ AUTH HELPERS ------------------
 
     protected void logoutIfPossible() {
         try {
@@ -352,7 +338,6 @@ public abstract class BaseE2ETest {
         return !onLoginPage();
     }
 
-    // ------------------ NAV / FIND HELPERS ------------------
 
     protected void open(String path) {
         if (path == null) path = "";
@@ -360,7 +345,6 @@ public abstract class BaseE2ETest {
 
         String url = baseUrl() + path;
 
-        // güvenlik: URL yanlışlıkla https olduysa http'ye çevir
         if (url.startsWith("https://")) {
             url = "http://" + url.substring("https://".length());
         }
@@ -423,7 +407,6 @@ public abstract class BaseE2ETest {
         return el;
     }
 
-    // ------------------ SMART INPUT SET ------------------
 
     protected void setById(String id, String value) {
         WebElement el = byId(id);
@@ -474,8 +457,6 @@ public abstract class BaseE2ETest {
     private String safeLower(String s) {
         return s == null ? "" : s.toLowerCase();
     }
-
-    // ------------------ SUBMIT ------------------
 
     protected void clickSubmitInSameFormOf(String fieldId) {
         WebElement field = byId(fieldId);
@@ -619,7 +600,6 @@ public abstract class BaseE2ETest {
         } catch (Exception ignored) {}
     }
 
-    // ------------------ COMPAT / HELPERS ------------------
 
     protected String unique(String prefix) {
         long n = System.currentTimeMillis() % 100_000_000L;
@@ -636,7 +616,6 @@ public abstract class BaseE2ETest {
         return Long.parseLong(idText.trim());
     }
 
-    // ------------------ MULTI-ID HELPERS ------------------
 
     protected String firstPresentId(int timeoutSeconds, String... ids) {
         long end = System.currentTimeMillis() + timeoutSeconds * 1000L;
@@ -724,8 +703,6 @@ public abstract class BaseE2ETest {
                         " | URL=" + driver.getCurrentUrl()
         );
     }
-
-    // --- Backward compatibility ---
     protected boolean dbHasTitle(String title) throws Exception {
         return dbHasLostTitle(title);
     }
