@@ -40,7 +40,7 @@ class ClaimFlowIT {
 
   @Test
   void sqlite_is_working() {
-    Integer n = jdbc.queryForObject("SELECT COUNT(*) FROM users", Integer.class);
+    Integer n = jdbc.queryForObject(" SELECT COUNT(*) FROM users", Integer.class);
     assertNotNull(n);
     assertEquals(3, n.intValue());
   }
